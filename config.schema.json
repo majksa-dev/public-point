@@ -1,0 +1,44 @@
+{
+	"$schema": "http://json-schema.org/draft-04/schema#",
+	"type": "object",
+	"properties": {
+		"apps": {
+			"type": "object",
+			"additionalProperties": { "$ref": "#/definitions/App" }
+		}
+	},
+	"required": ["apps"],
+	"definitions": {
+		"App": {
+			"type": "object",
+			"properties": {
+				"upstream": { "$ref": "#/definitions/Upstream" },
+				"sni": {
+					"type": "string",
+					"format": "hostname"
+				}
+			},
+			"required": ["upstream"]
+		},
+		"Upstream": {
+			"type": "object",
+			"properties": {
+				"host": {
+					"type": "string",
+					"format": "hostname"
+				},
+				"port": {
+					"type": "integer",
+					"minimum": 1,
+					"maximum": 65535,
+					"default": 80
+				},
+				"tls": {
+					"type": "boolean",
+					"default": false
+				}
+			},
+			"required": ["host"]
+		}
+	}
+}
