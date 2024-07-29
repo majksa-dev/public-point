@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/majksa-dev/public-point/compare/v0.1.0...v0.1.1) (2024-07-29)
+
+
+### Bug Fixes
+
+* forward domains correctly ([bfa6798](https://github.com/majksa-dev/public-point/commit/bfa67980577f49652943039056f417a624145567))
+
 ## [0.1.0](https://github.com/majksa-dev/public-point/compare/v0.0.1...v0.1.0) (2024-07-29)
 
 
