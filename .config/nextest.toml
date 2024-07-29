@@ -4,5 +4,5 @@ experimental = ["setup-scripts"]
 command = 'cargo build --release'
 
 [[profile.default.scripts]]
-filter = 'deps(server-gateway)'
+filter = 'deps(public-point)'
 setup = 'build-app'
