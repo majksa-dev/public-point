@@ -5,11 +5,13 @@ use super::upstream::Upstream;
 #[derive(Debug, Deserialize, Clone)]
 pub struct AppConfigRaw {
     pub upstream: Upstream,
+    pub hostname: String,
 }
 
 #[derive(Debug, Clone)]
 pub struct AppConfig {
     pub name: String,
+    pub hostname: String,
     pub upstream: Upstream,
 }
 
@@ -18,6 +20,7 @@ impl AppConfig {
         AppConfig {
             name,
             upstream: data.upstream,
+            hostname: data.hostname,
         }
     }
 }

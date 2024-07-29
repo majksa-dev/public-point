@@ -62,10 +62,10 @@ pub async fn build(env: Env) -> Result<Server> {
                 .map(|app| {
                     (
                         app.name.clone(),
-                        tcp::config::Connection::new(format!(
-                            "{}:{}",
-                            app.upstream.host, app.upstream.port
-                        )),
+                        tcp::config::Connection::new(
+                            format!("{}:{}", app.upstream.host, app.upstream.port),
+                            app.hostname.clone(),
+                        ),
                     )
                 })
                 .collect(),

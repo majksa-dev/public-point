@@ -28,6 +28,7 @@ fn single_server_config(app_port: u16) -> serde_json::Value {
     json!({
         "apps": {
             "hello.world.example": {
+                "hostname": "app.papi.prod.localhost",
                 "upstream": {
                     "host": "127.0.0.1",
                     "port": app_port
