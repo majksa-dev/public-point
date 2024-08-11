@@ -2,33 +2,45 @@ use async_trait::async_trait;
 use essentials::{debug, info};
 use gateway::http::response::ResponseBody;
 use gateway::http::HeaderMapExt;
-use gateway::{ReadResponse, Request, Response, WriteHalf, WriteRequest};
-use rcgen::{generate_simple_self_signed, CertifiedKey};
+use gateway::tokio_rustls::rustls::{
+    crypto::aws_lc_rs::sign::any_supported_type,
+    pki_types::{CertificateDer, PrivateKeyDer},
+    server::ResolvesServerCertUsingSni,
+};
+use gateway::{
+    ReadRequest, ReadResponse, Request, Response, WriteHalf, WriteRequest, WriteResponse,
+};
+use http::StatusCode;
+use rcgen::generate_simple_self_signed;
+use rustls_pemfile::{certs, private_key};
 use serde_json::json;
 use std::fs::read_to_string;
+use std::fs::File;
 use std::io;
 use std::net::SocketAddr;
+use std::path::{Path, PathBuf};
 use std::process::Child;
 use std::{env, sync::Arc};
 use testing_utils::fs::fixture::ChildPath;
 use testing_utils::fs::prelude::{FileTouch, FileWriteStr, PathChild, PathCreateDir};
 use testing_utils::fs::TempDir;
 use testing_utils::{fs, server_cmd};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpStream;
+use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::net::{TcpListener, TcpStream};
+use tokio::task::JoinHandle;
 use tokio_rustls::rustls::pki_types::ServerName;
-use tokio_rustls::rustls::{ClientConfig, RootCertStore};
-use tokio_rustls::TlsConnector;
-use wiremock::{
-    matchers::{method, path},
-    Mock, MockServer, ResponseTemplate,
-};
+use tokio_rustls::rustls::sign::CertifiedKey;
+use tokio_rustls::rustls::{ClientConfig, RootCertStore, ServerConfig};
+use tokio_rustls::{TlsAcceptor, TlsConnector};
 
-fn single_server_config(app_port: u16) -> serde_json::Value {
+fn single_server_config(app_port: u16, cert: &str, hostname: &str) -> serde_json::Value {
     json!({
+        "certs": [
+            cert
+        ],
         "apps": {
             "hello.world.example": {
-                "hostname": "app.papi.prod.localhost",
+                "hostname": hostname,
                 "upstream": {
                     "host": "127.0.0.1",
                     "port": app_port
@@ -42,7 +54,7 @@ pub struct Context {
     app: u16,
     pub domain: String,
     connector: TlsConnector,
-    _origin_server: MockServer,
+    _origin_server: JoinHandle<()>,
     _app_server: Child,
 }
 
@@ -102,10 +114,21 @@ pub async fn before_each() -> Context {
     }
 
     let domain = "hello.world.example";
+    let origin_domain = "app.papi.prod.localhost";
     let temp = fs::TempDir::new().unwrap();
-    let (mock_server, mock_port) = create_origin_server().await;
-    let input_file = create_config(mock_port, &temp);
     let (certs_dir, connector) = setup_tls(domain, &temp);
+    let origin_certs_dir = setup_tls(origin_domain, &temp)
+        .0
+        .to_path_buf()
+        .join(origin_domain);
+    let origin_cert = origin_certs_dir.join("cert.pem");
+    let (mock_server, mock_port) = create_origin_server(origin_certs_dir, origin_domain).await;
+    let input_file = create_config(
+        mock_port,
+        &temp,
+        origin_cert.to_str().unwrap(),
+        origin_domain,
+    );
     let ports = testing_utils::get_random_ports(3);
     let app = server_cmd()
         .env("RUST_BACKTRACE", "full")
@@ -131,20 +154,57 @@ pub async fn before_each() -> Context {
 
 pub async fn after_each(_ctx: ()) {}
 
-async fn create_origin_server() -> (MockServer, u16) {
-    let listener = std::net::TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], 0))).unwrap();
-    let addr = listener.local_addr().unwrap();
-    let mock_server = MockServer::builder().listener(listener).start().await;
-    Mock::given(method("GET"))
-        .and(path("/hello"))
-        .respond_with(ResponseTemplate::new(200).set_body_string("Hello, world!"))
-        .mount(&mock_server)
-        .await;
-    (mock_server, addr.port())
+fn load_certs(path: &Path) -> io::Result<Vec<CertificateDer<'static>>> {
+    certs(&mut std::io::BufReader::new(File::open(path)?)).collect()
 }
 
-fn create_config(origin_port: u16, temp: &TempDir) -> ChildPath {
-    let config = single_server_config(origin_port);
+fn load_keys(path: &Path) -> io::Result<PrivateKeyDer<'static>> {
+    private_key(&mut std::io::BufReader::new(File::open(path)?))?
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "No keys found in file"))
+}
+
+async fn create_origin_server(folder: PathBuf, hostname: &str) -> (JoinHandle<()>, u16) {
+    let mut tls_resolver = ResolvesServerCertUsingSni::new();
+    let certs = load_certs(folder.join("cert.pem").as_path()).unwrap();
+    let key = load_keys(folder.join("key.pem").as_path()).unwrap();
+    let key = any_supported_type(&key).unwrap();
+    let private_key = CertifiedKey::new(certs, key);
+    tls_resolver.add(hostname, private_key).unwrap();
+    let tls_config = ServerConfig::builder()
+        .with_no_client_auth()
+        .with_cert_resolver(Arc::new(tls_resolver));
+    let tls_acceptor = TlsAcceptor::from(Arc::new(tls_config));
+    let listener = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], 0)))
+        .await
+        .unwrap();
+    let addr = listener.local_addr().unwrap();
+    let handle = tokio::spawn(async move {
+        loop {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut stream = tls_acceptor.accept(stream).await.unwrap();
+            let mut buffer = BufReader::new(&mut stream);
+            let request = buffer.read_request().await.unwrap();
+            if request.path == "/hello" {
+                let mut response = Response::new(StatusCode::OK);
+                response.insert_header("Content-Length", "13");
+                stream.write_response(&response).await.unwrap();
+                stream.flush().await.unwrap();
+                stream.write_all(b"Hello, world!").await.unwrap();
+                stream.flush().await.unwrap();
+                stream.shutdown().await.unwrap();
+            } else {
+                let response = Response::new(StatusCode::NOT_FOUND);
+                stream.write_response(&response).await.unwrap();
+                stream.flush().await.unwrap();
+                stream.shutdown().await.unwrap();
+            }
+        }
+    });
+    (handle, addr.port())
+}
+
+fn create_config(origin_port: u16, temp: &TempDir, cert: &str, hostname: &str) -> ChildPath {
+    let config = single_server_config(origin_port, cert, hostname);
     let file = temp.child("config.json");
     file.touch().unwrap();
     file.write_str(&config.to_string()).unwrap();
@@ -154,7 +214,8 @@ fn create_config(origin_port: u16, temp: &TempDir) -> ChildPath {
 
 fn setup_tls(domain: &str, temp: &TempDir) -> (ChildPath, TlsConnector) {
     let subject_alt_names = vec![domain.to_string()];
-    let CertifiedKey { cert, key_pair } = generate_simple_self_signed(subject_alt_names).unwrap();
+    let rcgen::CertifiedKey { cert, key_pair } =
+        generate_simple_self_signed(subject_alt_names).unwrap();
     let dir = temp.child("certs");
     dir.create_dir_all().unwrap();
     let domain_dir = dir.child(domain);

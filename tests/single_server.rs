@@ -16,7 +16,7 @@ async fn should_succeed(ctx: Context) {
     debug!("{:?}", response);
     assert_eq!(response.status, StatusCode::OK);
     assert_eq!(
-        response.body().unwrap().read_all(0).await.unwrap(),
+        response.body().unwrap().read_all(13).await.unwrap(),
         "Hello, world!"
     );
 }
