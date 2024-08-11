@@ -7,10 +7,6 @@ updates:
     commit-message:
       prefix: "ci(deps)"
       prefix-development: "ci(deps-dev)"
-    groups:
-      dependencies:
-        patterns:
-          - "*"
   - package-ecosystem: "cargo"
     directory: "/"
     schedule:
