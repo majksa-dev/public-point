@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/majksa-dev/public-point/compare/v0.2.0...v0.2.1) (2024-08-11)
+
+
+### Bug Fixes
+
+* **dockerfile:** env and healthcheck ([6e2a3f4](https://github.com/majksa-dev/public-point/commit/6e2a3f46da54d6e0c2c5c713506dd4d875ea0c48))
+
 ## [0.2.0](https://github.com/majksa-dev/public-point/compare/v0.1.1...v0.2.0) (2024-08-11)
 
 
