@@ -1,11 +1,12 @@
 use serde::Deserialize;
-use std::collections::HashMap;
+use std::{collections::HashMap, path::PathBuf};
 
 use super::app::{AppConfig, AppConfigRaw};
 
 #[derive(Debug, Clone)]
 pub struct Apps {
     pub apps: HashMap<String, AppConfig>,
+    pub certs: Vec<PathBuf>,
 }
 
 impl Apps {
@@ -17,13 +18,17 @@ impl Apps {
         for (name, config) in data.apps {
             apps.insert(name.clone(), AppConfig::from_raw(config, name));
         }
-        Apps { apps }
+        Apps {
+            apps,
+            certs: data.certs,
+        }
     }
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct AppsRaw {
     pub apps: HashMap<String, AppConfigRaw>,
+    pub certs: Vec<PathBuf>,
 }
 
 impl AppsRaw {

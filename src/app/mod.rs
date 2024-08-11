@@ -1,21 +1,21 @@
-mod router;
-
 use crate::config::apps::Apps;
 use anyhow::{Context, Result};
 use essentials::debug;
-use gateway::tokio_rustls::{
-    rustls::{
-        crypto::aws_lc_rs::sign::any_supported_type,
-        pki_types::{CertificateDer, PrivateKeyDer},
-        server::ResolvesServerCertUsingSni,
-        sign::CertifiedKey,
-        ServerConfig,
+use gateway::{self, http::HeaderMapExt, tls, Request, Server};
+use gateway::{
+    tokio_rustls::{
+        rustls::{
+            crypto::aws_lc_rs::sign::any_supported_type,
+            pki_types::{CertificateDer, PrivateKeyDer},
+            server::ResolvesServerCertUsingSni,
+            sign::CertifiedKey,
+            ServerConfig,
+        },
+        TlsAcceptor,
     },
-    TlsAcceptor,
+    AnyRouterBuilder,
 };
-use gateway::{self, http::HeaderMapExt, tcp, Request, Server};
 use http::header;
-use router::AnyRouterBuilder;
 use rustls_pemfile::{certs, private_key};
 use std::{
     fs::File,
@@ -56,27 +56,27 @@ pub async fn build(env: Env) -> Result<Server> {
     let config = load_config(env.config_file).await?;
     debug!("{:?}", config);
     let (peers, configs) = config.apps.into_iter().collect::<(Vec<_>, Vec<_>)>();
-    let mut builder = gateway::builder(
-        tcp::Builder::build(
-            configs
-                .iter()
-                .map(|app| {
-                    (
-                        app.name.clone(),
-                        tcp::config::Connection::new(format!(
-                            "{}:{}",
-                            app.upstream.host, app.upstream.port
-                        ))
-                        .with_host(app.hostname.clone()),
-                    )
-                })
-                .collect(),
-        ),
-        peer_key_from_host(),
-    )
-    .with_app_port(env.http_port.unwrap_or(80))
-    .with_health_check_port(env.healthcheck_port.unwrap_or(9000))
-    .with_host(env.host.unwrap_or(IpAddr::from([127, 0, 0, 1])));
+    let mut tls_origin: tls::Builder = configs
+        .iter()
+        .map(|app| {
+            (
+                app.name.clone(),
+                tls::config::Connection::new(format!(
+                    "{}:{}",
+                    app.upstream.host, app.upstream.port
+                ))
+                .with_host(app.hostname.clone())
+                .with_tls(),
+            )
+        })
+        .collect();
+    for cert in config.certs {
+        tls_origin = tls_origin.add_ca_root(cert)?;
+    }
+    let mut builder = gateway::builder(tls::Builder::build(tls_origin), peer_key_from_host())
+        .with_app_port(env.http_port.unwrap_or(80))
+        .with_health_check_port(env.healthcheck_port.unwrap_or(9000))
+        .with_host(env.host.unwrap_or(IpAddr::from([127, 0, 0, 1])));
     for peer in peers.into_iter() {
         builder = builder.register_peer(peer, AnyRouterBuilder);
     }
