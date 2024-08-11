@@ -55,7 +55,7 @@ pub struct Context {
     pub domain: String,
     connector: TlsConnector,
     _origin_server: JoinHandle<()>,
-    _app_server: Child,
+    app_server: Child,
 }
 
 #[derive(Debug)]
@@ -147,12 +147,14 @@ pub async fn before_each() -> Context {
         app: ports[1],
         domain: domain.to_string(),
         connector,
-        _app_server: app,
+        app_server: app,
         _origin_server: mock_server,
     }
 }
 
-pub async fn after_each(_ctx: ()) {}
+pub async fn after_each(mut ctx: Context) {
+    ctx.app_server.kill().unwrap();
+}
 
 fn load_certs(path: &Path) -> io::Result<Vec<CertificateDer<'static>>> {
     certs(&mut std::io::BufReader::new(File::open(path)?)).collect()
