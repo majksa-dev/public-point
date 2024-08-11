@@ -15,7 +15,7 @@ A Rust Public Point Gateway built on top of custom gateway library.
 
 <!-- x-release-please-start-version -->
 
-`docker run --rm -p 80:80 ghcr.io/majksa-dev/public-point:0.1.1`
+`docker run --rm -p 80:80 ghcr.io/majksa-dev/public-point:0.2.0`
 
 <!-- x-release-please-end -->
 

@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.0](https://github.com/majksa-dev/public-point/compare/v0.1.1...v0.2.0) (2024-08-11)
+
+
+### Features
+
+* **tls:** add secure connection between peers and public point ([8e95965](https://github.com/majksa-dev/public-point/commit/8e95965fbd0cd9eb4101c6e00843f1fb38d16cc5))
+
+
+### Bug Fixes
+
+* **deps:** bump versions ([6af65b7](https://github.com/majksa-dev/public-point/commit/6af65b7b16c5b5ea35bb020d05eeb973becfaa76))
+
 ## [0.1.1](https://github.com/majksa-dev/public-point/compare/v0.1.0...v0.1.1) (2024-07-29)
 
 
